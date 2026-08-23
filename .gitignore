@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Database
+backend/prisma/*.db
+backend/prisma/*.db-journal
+backend/dev.db
+backend/dev.db-journal
+
+# Coverage / test output
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Temp
+tmp/
+temp/
+*.tmp
+
+# Zip backups themselves are build artifacts, not source
+*.zip

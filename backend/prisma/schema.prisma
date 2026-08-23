@@ -1,0 +1,101 @@
+// Smart Resume Screener - Prisma schema
+//
+// Kept intentionally simple (SQLite, no over-normalization) per project
+// guidelines. Structured/derived data (extraction results, match details,
+// score breakdowns) is stored as JSON strings in SQLite text columns rather
+// than being split into many extra tables, since it is always read/written
+// as a whole unit by the application and never queried piecemeal.
+//
+// NOTE: This schema is defined in Phase 1 to establish the data model, but
+// the application does not yet read/write to the database in Phase 1 -
+// persistence wiring (JobPosting/Candidate/ScreeningResult CRUD) is Phase 2
+// scope per the master build plan.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model JobPosting {
+  id          String   @id @default(cuid())
+  title       String
+  rawText     String // original pasted/uploaded job description
+  extracted   String // JSON: ParsedJobDescription (required/preferred skills, experience, education, etc.)
+  createdAt   DateTime @default(now())
+
+  screeningRuns ScreeningRun[]
+}
+
+model ScreeningRun {
+  id           String   @id @default(cuid())
+  jobPostingId String
+  jobPosting   JobPosting @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  status       String   @default("PENDING") // PENDING | RUNNING | COMPLETED | FAILED
+  createdAt    DateTime @default(now())
+  completedAt  DateTime?
+
+  candidates   Candidate[]
+}
+
+model Candidate {
+  id             String   @id @default(cuid())
+  screeningRunId String
+  screeningRun   ScreeningRun @relation(fields: [screeningRunId], references: [id], onDelete: Cascade)
+
+  name           String?
+  email          String?
+  phone          String?
+
+  resume         Resume?
+  screeningResult ScreeningResult?
+
+  createdAt      DateTime @default(now())
+}
+
+model Resume {
+  id           String   @id @default(cuid())
+  candidateId  String   @unique
+  candidate    Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  fileName     String
+  rawText      String // extracted raw text from PDF/text file
+  extracted    String // JSON: ParsedResume (skills, experience, education, projects, certifications)
+
+  createdAt    DateTime @default(now())
+}
+
+model ScreeningResult {
+  id             String   @id @default(cuid())
+  candidateId    String   @unique
+  candidate      Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  overallScore   Float
+  decision       String // SHORTLIST | REVIEW | REJECT
+  confidence     String // HIGH | MEDIUM | LOW
+  scoreBreakdown String // JSON: { requiredSkills, experience, education, preferredSkills, evidence }
+  strengths      String // JSON string[]
+  concerns       String // JSON string[]
+  justification  String // LLM-generated natural-language explanation (never drives the score itself)
+
+  requirementMatches RequirementMatch[]
+
+  createdAt      DateTime @default(now())
+}
+
+model RequirementMatch {
+  id                String   @id @default(cuid())
+  screeningResultId String
+  screeningResult   ScreeningResult @relation(fields: [screeningResultId], references: [id], onDelete: Cascade)
+
+  requirement   String
+  category      String  // required | preferred
+  relationship  String  // EXACT_MATCH | SEMANTIC_MATCH | RELATED_NOT_EQUIVALENT | NO_EVIDENCE
+  evidence      String? // quoted/paraphrased evidence from resume, null if NO_EVIDENCE
+  confidence    Float   // 0-1
+
+  createdAt     DateTime @default(now())
+}
