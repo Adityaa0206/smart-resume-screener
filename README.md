@@ -30,10 +30,9 @@ The system:
 ---
 
 
-
 ## 🎥 Demo Video
 
-![Smart Resume Screener Demo](docs/dashboard-preview.png)](https://youtu.be/VwQ2UNu-Swo)
+[![Smart Resume Screener Demo](docs/dashboard-preview.png)](https://youtu.be/VwQ2UNu-Swo)
 
 ---
 
