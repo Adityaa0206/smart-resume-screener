@@ -215,14 +215,14 @@ Git
 
 A Google Gemini API key is required for live AI-powered screening.
 
-1. Clone the Repository
+## 1. Clone the Repository
 git clone <repository-url>
 cd smart-resume-screener
 Backend Setup
-2. Install Backend Dependencies
+## 2. Install Backend Dependencies
 cd backend
 npm install
-3. Configure Environment Variables
+## 3. Configure Environment Variables
 
 Create a .env file inside the backend directory.
 
@@ -257,23 +257,24 @@ The .env file is intentionally excluded from version control.
 
 Use .env.example as the safe template.
 
-4. Generate Prisma Client
+## 4. Generate Prisma Client
 
 From the backend directory:
 
 npx prisma generate
-5. Apply Database Migrations
+## 5. Apply Database Migrations
 npx prisma migrate dev
 
 This creates/updates the SQLite database according to the Prisma schema.
 
-6. Start the Backend
+## 6. Start the Backend
 npm run dev
 
 The backend runs on:
 
 http://localhost:4000
-7. Verify Backend Health
+
+## 7. Verify Backend Health
 
 Open:
 
@@ -464,7 +465,7 @@ API failures are handled without exposing the API key.
 
 Never commit a real Gemini API key to the repository.
 
-Development Commands
+##Development Commands
 Backend
 
 Install dependencies:
@@ -568,7 +569,8 @@ The project currently includes the end-to-end screening workflow:
  React frontend
  AI-powered screening workflow
  Rule-based fallback handling
-Future Improvements
+ 
+## Future Improvements
 
 Potential future improvements include:
 
@@ -582,7 +584,8 @@ Configurable scoring weights
 More advanced candidate comparison
 Automated email workflows
 Production deployment and monitoring
-License
+
+## License
 
 This project is intended as an academic/project demonstration application.
 
