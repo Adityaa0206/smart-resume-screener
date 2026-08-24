@@ -33,7 +33,7 @@ The system:
 
 ## 🎥 Demo Video
 
-[▶️ Watch the Smart Resume Screener Demo](https://youtu.be/VwQ2UN-Swo)
+[▶️ Watch the Smart Resume Screener Demo](https://youtu.be/VwQ2UNu-Swo)
 
 ---
 
