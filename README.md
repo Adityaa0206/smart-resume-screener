@@ -201,6 +201,8 @@ smart-resume-screener/
 │       └── App.tsx
 │
 └── README.md
+```
+
 
 ## Getting Started
 Prerequisites
