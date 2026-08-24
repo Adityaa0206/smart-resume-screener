@@ -32,6 +32,8 @@ The system:
 
 ## 🎥 Demo Video
 
+** Click the preview below to watch the full demo video.**
+
 [![Smart Resume Screener Demo](docs/dashboard-preview.png)](https://youtu.be/VwQ2UNu-Swo)
 
 ---
