@@ -17,7 +17,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, to: "/" },
-  { label: "Screen Candidates", icon: ScanSearch, comingSoon: true },
+  { label: "Screen Candidates", icon: ScanSearch, to: "/screen" },
   { label: "Candidates", icon: Users, comingSoon: true },
   { label: "Settings", icon: Settings, comingSoon: true }
 ];
