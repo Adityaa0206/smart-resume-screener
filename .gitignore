@@ -39,3 +39,5 @@ temp/
 
 # Zip backups themselves are build artifacts, not source
 *.zip
+
+frontend/.vite/
