@@ -73,13 +73,14 @@ model ScreeningResult {
   candidateId    String   @unique
   candidate      Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 
-  overallScore   Float
-  decision       String // SHORTLIST | REVIEW | REJECT
-  confidence     String // HIGH | MEDIUM | LOW
-  scoreBreakdown String // JSON: { requiredSkills, experience, education, preferredSkills, evidence }
-  strengths      String // JSON string[]
-  concerns       String // JSON string[]
-  justification  String // LLM-generated natural-language explanation (never drives the score itself)
+    overallScore             Float
+    decision                 String
+    confidence               String
+    scoreBreakdown           String
+    strengths                String
+    concerns                 String
+    overriddenByMandatoryGap String?
+    justification            String
 
   requirementMatches RequirementMatch[]
 

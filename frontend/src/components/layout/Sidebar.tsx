@@ -18,7 +18,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, to: "/" },
   { label: "Screen Candidates", icon: ScanSearch, to: "/screen" },
-  { label: "Candidates", icon: Users, comingSoon: true },
+  { label: "Candidates", icon: Users, to: "/candidates" },
   { label: "Settings", icon: Settings, comingSoon: true }
 ];
 
@@ -68,10 +68,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         </div>
 
         <div className="border-t border-white/10 px-5 py-4">
-          <Badge tone="warning">Demo mode</Badge>
+          <Badge tone="warning">Live mode</Badge>
           <p className="mt-2 text-xs leading-relaxed text-white/50">
-            No OpenAI key configured. The backend falls back to deterministic,
-            rule-based matching so the pipeline stays fully demoable.
+             Screening is powered by Gemini for resume extraction and matching.
           </p>
         </div>
       </aside>

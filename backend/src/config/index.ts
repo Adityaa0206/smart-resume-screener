@@ -2,8 +2,13 @@ import "dotenv/config";
 
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
-  if (!raw) return fallback;
+
+  if (!raw) {
+    return fallback;
+  }
+
   const parsed = parseInt(raw, 10);
+
   return Number.isNaN(parsed) ? fallback : parsed;
 }
 
@@ -12,17 +17,16 @@ export const config = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   databaseUrl: process.env.DATABASE_URL ?? "file:./dev.db",
 
-  openaiApiKey: process.env.OPENAI_API_KEY?.trim() || null,
-  openaiModel: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+  geminiApiKey: process.env.GEMINI_API_KEY?.trim() || null,
+  geminiModel: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
 
   maxUploadFileSizeMb: envInt("MAX_UPLOAD_FILE_SIZE_MB", 8),
   maxResumesPerRequest: envInt("MAX_RESUMES_PER_REQUEST", 20)
 };
 
 /**
- * True when no OpenAI API key is configured. In this mode the app falls
- * back to deterministic, rule-based extraction/explanation logic instead of
- * calling the OpenAI API, so the full pipeline can be demoed/tested for
- * free. All demo-mode output is explicitly labeled - see llm.service.ts.
+ * True when no Gemini API key is configured.
+ * In this mode the app falls back to deterministic,
+ * rule-based extraction and screening.
  */
-export const isDemoMode = () => config.openaiApiKey === null;
+export const isDemoMode = () => config.geminiApiKey === null;

@@ -5,6 +5,8 @@ export function getHealth(_req: Request, res: Response): void {
   res.status(200).json({
     status: "ok",
     timestamp: new Date().toISOString(),
-    llmMode: isDemoMode() ? "demo (rule-based fallback, no OPENAI_API_KEY set)" : "live (OpenAI)"
+    llmMode: isDemoMode()
+  ? "demo (rule-based fallback, no GEMINI_API_KEY set)"
+  : "live (Gemini)"
   });
 }

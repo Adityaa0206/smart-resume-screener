@@ -25,7 +25,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
         <div className="leading-tight">
           <p className="font-mono text-[11px] uppercase tracking-widest text-slate">Workspace</p>
-          <p className="font-display text-sm font-semibold text-ink">Acme Recruiting</p>
+          <p className="font-display text-sm font-semibold text-ink">AI Recruitment Workspace</p>
         </div>
       </div>
 

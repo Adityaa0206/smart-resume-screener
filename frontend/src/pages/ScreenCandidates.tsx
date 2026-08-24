@@ -1,5 +1,12 @@
 import { ChangeEvent, DragEvent, useMemo, useState } from "react";
-import { FileText, Upload, X, CheckCircle2, Play, AlertCircle } from "lucide-react";
+import {
+  FileText,
+  Upload,
+  X,
+  CheckCircle2,
+  Play,
+  AlertCircle
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -10,7 +17,43 @@ interface ResumeFile {
   file: File;
 }
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
+interface ScreeningCandidate {
+  candidateId: string;
+  fileName: string;
+  overallScore: number;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  resume: {
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+  };
+  score: {
+    overallScore: number;
+    decision: "SHORTLIST" | "REVIEW" | "REJECT";
+    confidence: "HIGH" | "MEDIUM" | "LOW";
+    matchedRequirements: unknown[];
+    partialRequirements: unknown[];
+    missingRequirements: unknown[];
+  };
+}
+
+interface ScreeningResponse {
+  success: boolean;
+  screeningRunId: string;
+  jobPostingId: string;
+  jobDescription: unknown;
+  candidates: Array<{
+    rank: number;
+    candidate: ScreeningCandidate;
+  }>;
+  meta: {
+    candidateCount: number;
+    usedJdFallback: boolean;
+    processedAt: string;
+  };
+}
+
+const MAX_FILE_SIZE = 8 * 1024 * 1024;
 
 export function ScreenCandidatesPage() {
   const navigate = useNavigate();
@@ -24,9 +67,11 @@ export function ScreenCandidatesPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState("");
   const [started, setStarted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [screeningResult, setScreeningResult] =
+    useState<ScreeningResponse | null>(null);
 
   const jdReady = jobDescription.trim().length >= 30 || jdFile !== null;
-
   const canStart = jdReady && resumes.length > 0;
 
   const totalResumeSize = useMemo(
@@ -39,13 +84,16 @@ export function ScreenCandidatesPage() {
 
     if (!file) return;
 
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+    if (
+      file.type !== "application/pdf" &&
+      !file.name.toLowerCase().endsWith(".pdf")
+    ) {
       setError("Job description must be a PDF file.");
       return;
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      setError("Job description file must be smaller than 10 MB.");
+      setError("Job description file must be smaller than 8 MB.");
       return;
     }
 
@@ -70,7 +118,7 @@ export function ScreenCandidatesPage() {
       }
 
       if (file.size > MAX_FILE_SIZE) {
-        setError(`${file.name} is larger than 10 MB.`);
+        setError(`${file.name} is larger than 8 MB.`);
         continue;
       }
 
@@ -134,7 +182,7 @@ export function ScreenCandidatesPage() {
     setJdFile(null);
   }
 
-  function handleStart() {
+  async function handleStart() {
     if (!jdReady) {
       setError("Add a job description before starting screening.");
       return;
@@ -146,169 +194,386 @@ export function ScreenCandidatesPage() {
     }
 
     setError("");
-    setStarted(true);
+    setIsSubmitting(true);
+
+    try {
+      const formData = new FormData();
+
+      /*
+       * The backend currently expects the job description as text.
+       *
+       * If a JD PDF is uploaded without pasted text, we cannot send the
+       * PDF through the current /api/screen contract, so require text.
+       */
+      if (!jobDescription.trim()) {
+        throw new Error(
+          "Please paste the job description text. PDF-only job description upload is not supported by the current backend endpoint."
+        );
+      }
+
+      formData.append("jobDescription", jobDescription.trim());
+
+      for (const resume of resumes) {
+        formData.append("resumes", resume.file);
+      }
+
+      const response = await fetch("http://localhost:4000/api/screen", {
+        method: "POST",
+        body: formData
+      });
+
+      let data: ScreeningResponse | {
+        error?: {
+          message?: string;
+        };
+      };
+
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error(
+          `Backend returned an invalid response (${response.status}).`
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          "error" in data && data.error?.message
+            ? data.error.message
+            : "Screening request failed."
+        );
+      }
+
+      setScreeningResult(data as ScreeningResponse);
+      setStarted(true);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to connect to the screening backend."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
-  if (started) {
+  function startNewScreening() {
+    setStarted(false);
+    setScreeningResult(null);
+    setError("");
+  }
+
+  if (started && screeningResult) {
     return (
       <div className="space-y-6">
         <PageHeader
-          eyebrow="Screen Candidates"
-          title="Screening ready"
-          description="Your screening configuration has been validated. Backend integration will be connected next."
+          eyebrow="Screening Results"
+          title="Screening complete"
+          description={`${screeningResult.meta.candidateCount} candidate${
+            screeningResult.meta.candidateCount === 1 ? "" : "s"
+          } processed successfully.`}
         />
 
-        <Card className="p-8">
-          <div className="flex items-start gap-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
-              <CheckCircle2 size={20} />
+        {screeningResult.meta.usedJdFallback && (
+          <Card className="border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle
+                size={18}
+                className="mt-0.5 shrink-0 text-amber-700"
+              />
+
+              <div>
+                <p className="text-sm font-semibold text-amber-900">
+                  Demo / fallback mode
+                </p>
+
+                <p className="mt-1 text-sm leading-6 text-amber-800">
+                  The backend used deterministic fallback processing because
+                  no Gemini API key is configured.
+                </p>
+              </div>
             </div>
+          </Card>
+        )}
 
-            <div>
-              <h2 className="font-display text-lg font-semibold text-ink">
-                Screening queued in demo mode
-              </h2>
-              <p className="mt-1 text-sm leading-6 text-ink-muted">
-                {resumes.length} candidate{resumes.length === 1 ? "" : "s"} are
-                ready to be processed. The real API connection will be added in
-                the integration phase.
-              </p>
-            </div>
-          </div>
+        <Card className="p-6">
+          <div className="grid gap-5 sm:grid-cols-3">
+            <SummaryRow
+              label="Candidates"
+              value={String(screeningResult.meta.candidateCount)}
+              ready
+            />
 
-          <div className="mt-6 flex gap-3">
-            <Button onClick={() => setStarted(false)} variant="secondary">
-              Edit screening
-            </Button>
+            <SummaryRow
+              label="Processing"
+              value={
+                screeningResult.meta.usedJdFallback
+                  ? "Demo mode"
+                  : "AI powered"
+              }
+            />
 
-            <Button onClick={() => navigate("/")}>
-              Back to dashboard
-            </Button>
+            <SummaryRow
+              label="Status"
+              value="Complete"
+              ready
+            />
           </div>
         </Card>
+
+        <Card className="overflow-hidden">
+          <div className="border-b border-ink/10 px-6 py-4">
+            <h2 className="font-display text-lg font-semibold text-ink">
+              Ranked candidates
+            </h2>
+
+            <p className="mt-1 text-sm text-ink-muted">
+              Candidates are ranked using AI-assisted screening and matching.
+            </p>
+          </div>
+
+          {screeningResult.candidates.length === 0 ? (
+            <div className="px-6 py-10 text-center">
+              <p className="font-medium text-ink">
+                No candidates were returned.
+              </p>
+
+              <p className="mt-1 text-sm text-ink-muted">
+                Try running another screening with different resumes.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-ink/10">
+              {screeningResult.candidates.map((item) => {
+                const candidate = item.candidate;
+                const score = candidate.score;
+
+                const decisionClass =
+                  score.decision === "SHORTLIST"
+                    ? "text-emerald-700"
+                    : score.decision === "REVIEW"
+                      ? "text-amber-700"
+                      : "text-red-700";
+
+                return (
+                  <div
+                    key={candidate.candidateId}
+                    className="flex flex-col gap-5 px-6 py-5 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex min-w-0 items-center gap-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink text-sm font-semibold text-white">
+                        #{item.rank}
+                      </div>
+
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-ink">
+                          {candidate.resume?.name || candidate.fileName}
+                        </p>
+
+                        <p className="mt-1 truncate text-sm text-ink-muted">
+                          {candidate.resume?.email || "No email extracted"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-7">
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase tracking-wider text-ink-muted">
+                          Score
+                        </p>
+
+                        <p className="text-xl font-semibold text-ink">
+                          {candidate.overallScore.toFixed(1)}/10
+                        </p>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase tracking-wider text-ink-muted">
+                          Decision
+                        </p>
+
+                        <p className={`font-semibold ${decisionClass}`}>
+                          {score.decision}
+                        </p>
+                      </div>
+
+                      <div className="hidden text-right sm:block">
+                        <p className="text-[10px] uppercase tracking-wider text-ink-muted">
+                          Confidence
+                        </p>
+
+                        <p className="font-medium text-ink">
+                          {candidate.confidence}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Button variant="secondary" onClick={startNewScreening}>
+            New screening
+          </Button>
+
+          <Button onClick={() => navigate("/")}>
+            Back to dashboard
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         eyebrow="Screen Candidates"
-        title="Set up a screening run"
-        description="Provide a job description, upload candidate resumes, and configure the criteria used for screening."
+        title="Run a new screening"
+        description="Add a job description and resumes to rank candidates against the role requirements."
       />
 
       {error && (
-        <div
-          role="alert"
-          className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-        >
-          <AlertCircle size={18} className="mt-0.5 shrink-0" />
-          <span>{error}</span>
-        </div>
+        <Card className="border-red-200 bg-red-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle
+              size={18}
+              className="mt-0.5 shrink-0 text-red-700"
+            />
+
+            <div>
+              <p className="text-sm font-semibold text-red-900">
+                Something went wrong
+              </p>
+
+              <p className="mt-1 text-sm leading-6 text-red-800">
+                {error}
+              </p>
+            </div>
+          </div>
+        </Card>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
+      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="space-y-6">
-          {/* Job description */}
           <Card className="p-6">
-            <div className="mb-5">
-              <div className="flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-ink text-xs font-semibold text-white">
-                  1
-                </span>
-                <h2 className="font-display text-lg font-semibold text-ink">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-mono uppercase tracking-widest text-ink-muted">
+                  Step 01
+                </p>
+
+                <h2 className="mt-1 font-display text-xl font-semibold text-ink">
                   Job description
                 </h2>
+
+                <p className="mt-1 text-sm leading-6 text-ink-muted">
+                  Paste the role requirements below. The backend will extract
+                  required and preferred skills automatically.
+                </p>
               </div>
 
-              <p className="mt-2 text-sm leading-6 text-ink-muted">
-                Paste the job description or upload a PDF. The backend will
-                extract requirements during the integration phase.
-              </p>
+              {jdReady && (
+                <CheckCircle2
+                  size={20}
+                  className="shrink-0 text-emerald-700"
+                />
+              )}
             </div>
 
             <textarea
               value={jobDescription}
               onChange={(event) => {
                 setJobDescription(event.target.value);
-                setJdFile(null);
-                setError("");
+
+                if (error) {
+                  setError("");
+                }
               }}
-              placeholder="Paste the full job description here..."
-              rows={10}
-              className="w-full resize-y rounded-lg border border-ink/10 bg-paper px-4 py-3 text-sm leading-6 text-ink outline-none transition focus:border-ink/30 focus:ring-2 focus:ring-ink/5"
+              placeholder={`Example:
+
+Software Engineer
+
+Required:
+- TypeScript
+- React
+- Node.js
+- PostgreSQL
+
+Preferred:
+- Kubernetes
+- AWS
+
+3+ years experience`}
+              rows={12}
+              className="mt-5 w-full resize-y rounded-md border border-ink/10 bg-white px-4 py-3 text-sm leading-6 text-ink outline-none transition focus:border-ink/30 focus:ring-2 focus:ring-ink/5"
             />
 
-            <div className="mt-2 flex items-center justify-between text-xs text-ink-muted">
-              <span>
-                {jobDescription.length.toLocaleString()} characters
-              </span>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-ink">
+                <Upload size={15} />
+                <span>Or upload JD PDF</span>
 
-              <span>
-                {jdReady ? "Job description ready" : "At least 30 characters"}
-              </span>
-            </div>
-
-            <div className="my-5 flex items-center gap-3 text-xs text-ink-muted">
-              <div className="h-px flex-1 bg-ink/10" />
-              OR
-              <div className="h-px flex-1 bg-ink/10" />
-            </div>
-
-            {jdFile ? (
-              <div className="flex items-center justify-between rounded-lg border border-ink/10 bg-ink/[0.02] p-4">
-                <div className="flex min-w-0 items-center gap-3">
-                  <FileText size={20} className="shrink-0 text-ink-muted" />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-ink">
-                      {jdFile.name}
-                    </p>
-                    <p className="text-xs text-ink-muted">
-                      {(jdFile.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={removeJdFile}
-                  className="rounded-md p-2 text-ink-muted hover:bg-ink/5 hover:text-ink"
-                  aria-label="Remove job description file"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            ) : (
-              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-ink/20 px-4 py-4 text-sm text-ink-muted transition hover:border-ink/40 hover:bg-ink/[0.02]">
-                <Upload size={17} />
-                Upload job description PDF
                 <input
                   type="file"
                   accept=".pdf,application/pdf"
-                  className="sr-only"
                   onChange={handleJdFile}
+                  className="hidden"
                 />
               </label>
+
+              {jdFile && (
+                <div className="flex items-center gap-2 rounded-md bg-ink/5 px-3 py-2 text-xs text-ink">
+                  <FileText size={14} />
+                  <span className="max-w-[220px] truncate">
+                    {jdFile.name}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={removeJdFile}
+                    className="text-ink-muted hover:text-ink"
+                    aria-label="Remove job description PDF"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {jdFile && !jobDescription.trim() && (
+              <p className="mt-3 text-xs leading-5 text-amber-700">
+                The current backend screening endpoint requires the job
+                description as text. Paste the JD text above before starting.
+              </p>
             )}
           </Card>
 
-          {/* Resume upload */}
           <Card className="p-6">
-            <div className="mb-5">
-              <div className="flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-ink text-xs font-semibold text-white">
-                  2
-                </span>
-                <h2 className="font-display text-lg font-semibold text-ink">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-mono uppercase tracking-widest text-ink-muted">
+                  Step 02
+                </p>
+
+                <h2 className="mt-1 font-display text-xl font-semibold text-ink">
                   Candidate resumes
                 </h2>
+
+                <p className="mt-1 text-sm leading-6 text-ink-muted">
+                  Upload PDF resumes. You can screen up to 20 candidates in
+                  one run.
+                </p>
               </div>
 
-              <p className="mt-2 text-sm leading-6 text-ink-muted">
-                Upload one or more candidate resumes. PDF files up to 10 MB are
-                supported.
-              </p>
+              {resumes.length > 0 && (
+                <CheckCircle2
+                  size={20}
+                  className="shrink-0 text-emerald-700"
+                />
+              )}
             </div>
 
             <div
@@ -316,34 +581,37 @@ export function ScreenCandidatesPage() {
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
               className={[
-                "rounded-xl border-2 border-dashed p-8 text-center transition",
+                "mt-5 rounded-lg border-2 border-dashed px-6 py-10 text-center transition",
                 isDragging
-                  ? "border-ink bg-ink/[0.04]"
-                  : "border-ink/15 hover:border-ink/30"
+                  ? "border-ink bg-ink/5"
+                  : "border-ink/10 bg-ink/[0.02] hover:border-ink/20"
               ].join(" ")}
             >
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-ink/5 text-ink-muted">
-                <Upload size={22} />
-              </div>
+              <Upload
+                size={28}
+                className="mx-auto text-ink-muted"
+                strokeWidth={1.5}
+              />
 
-              <p className="mt-4 text-sm font-medium text-ink">
-                Drop resumes here
+              <p className="mt-3 text-sm font-medium text-ink">
+                Drag and drop resumes here
               </p>
 
               <p className="mt-1 text-xs text-ink-muted">
-                or choose files from your computer
+                PDF only · maximum 8 MB per file
               </p>
 
               <label className="mt-4 inline-flex cursor-pointer">
-                <span className="rounded-md border border-ink/15 px-4 py-2 text-sm font-medium text-ink transition hover:bg-ink/5">
-                  Choose resumes
+                <span className="rounded-md border border-ink/15 bg-white px-4 py-2 text-sm font-medium text-ink transition hover:bg-ink/5">
+                  Browse files
                 </span>
+
                 <input
                   type="file"
-                  multiple
                   accept=".pdf,application/pdf"
-                  className="sr-only"
+                  multiple
                   onChange={handleResumeInput}
+                  className="hidden"
                 />
               </label>
             </div>
@@ -352,121 +620,113 @@ export function ScreenCandidatesPage() {
               <div className="mt-5 space-y-2">
                 <div className="flex items-center justify-between text-xs text-ink-muted">
                   <span>
-                    {resumes.length} resume{resumes.length === 1 ? "" : "s"} selected
+                    {resumes.length} resume
+                    {resumes.length === 1 ? "" : "s"} selected
                   </span>
+
                   <span>
-                    {(totalResumeSize / 1024 / 1024).toFixed(2)} MB total
+                    {(totalResumeSize / (1024 * 1024)).toFixed(1)} MB total
                   </span>
                 </div>
 
-                {resumes.map(({ id, file }) => (
+                {resumes.map((item) => (
                   <div
-                    key={id}
-                    className="flex items-center justify-between rounded-lg border border-ink/10 px-4 py-3"
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 rounded-md border border-ink/10 px-3 py-3"
                   >
                     <div className="flex min-w-0 items-center gap-3">
-                      <FileText size={18} className="shrink-0 text-ink-muted" />
+                      <FileText
+                        size={16}
+                        className="shrink-0 text-ink-muted"
+                      />
+
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-ink">
-                          {file.name}
+                          {item.file.name}
                         </p>
+
                         <p className="text-xs text-ink-muted">
-                          {(file.size / 1024 / 1024).toFixed(2)} MB
+                          {(item.file.size / (1024 * 1024)).toFixed(2)} MB
                         </p>
                       </div>
                     </div>
 
                     <button
                       type="button"
-                      onClick={() => removeResume(id)}
-                      className="rounded-md p-2 text-ink-muted hover:bg-ink/5 hover:text-ink"
-                      aria-label={`Remove ${file.name}`}
+                      onClick={() => removeResume(item.id)}
+                      className="shrink-0 rounded p-1 text-ink-muted transition hover:bg-ink/5 hover:text-ink"
+                      aria-label={`Remove ${item.file.name}`}
                     >
                       <X size={16} />
                     </button>
                   </div>
                 ))}
-
-                <button
-                  type="button"
-                  onClick={() => setResumes([])}
-                  className="pt-1 text-xs font-medium text-ink-muted hover:text-ink"
-                >
-                  Clear all resumes
-                </button>
               </div>
             )}
           </Card>
-        </div>
 
-        {/* Configuration + review */}
-        <div className="space-y-6">
           <Card className="p-6">
-            <div className="mb-5">
-              <div className="flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-ink text-xs font-semibold text-white">
-                  3
-                </span>
-                <h2 className="font-display text-lg font-semibold text-ink">
-                  Screening configuration
-                </h2>
-              </div>
-
-              <p className="mt-2 text-sm leading-6 text-ink-muted">
-                Configure how the existing screening engine should treat
-                requirements.
+            <div>
+              <p className="text-xs font-mono uppercase tracking-widest text-ink-muted">
+                Step 03
               </p>
+
+              <h2 className="mt-1 font-display text-xl font-semibold text-ink">
+                Screening options
+              </h2>
             </div>
 
-            <div className="space-y-5">
+            <div className="mt-5 space-y-5">
               <label className="block">
                 <span className="text-sm font-medium text-ink">
                   Minimum experience
                 </span>
-                <select
+
+                <span className="mt-1 block text-xs text-ink-muted">
+                  Optional override for the minimum years of experience.
+                </span>
+
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
                   value={minExperience}
                   onChange={(event) => setMinExperience(event.target.value)}
-                  className="mt-2 w-full rounded-lg border border-ink/10 bg-paper px-3 py-2.5 text-sm text-ink outline-none focus:border-ink/30"
-                >
-                  <option value="">No minimum specified</option>
-                  <option value="1">1+ years</option>
-                  <option value="2">2+ years</option>
-                  <option value="3">3+ years</option>
-                  <option value="5">5+ years</option>
-                  <option value="7">7+ years</option>
-                  <option value="10">10+ years</option>
-                </select>
+                  placeholder="e.g. 3"
+                  className="mt-3 w-full rounded-md border border-ink/10 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-ink/30 focus:ring-2 focus:ring-ink/5 sm:max-w-xs"
+                />
               </label>
 
-              <Toggle
-                checked={mandatoryRequirements}
-                onChange={setMandatoryRequirements}
-                title="Enforce mandatory requirements"
-                description="Mandatory requirements can override an otherwise strong match."
-              />
+              <div className="grid gap-5 sm:grid-cols-2">
+                <Toggle
+                  checked={includePreferred}
+                  onChange={setIncludePreferred}
+                  title="Include preferred skills"
+                  description="Use preferred requirements as part of the candidate score."
+                />
 
-              <Toggle
-                checked={includePreferred}
-                onChange={setIncludePreferred}
-                title="Consider preferred skills"
-                description="Preferred skills contribute to the candidate evaluation."
-              />
-            </div>
-          </Card>
-
-          <Card className="p-6">
-            <div className="mb-5">
-              <div className="flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-ink text-xs font-semibold text-white">
-                  4
-                </span>
-                <h2 className="font-display text-lg font-semibold text-ink">
-                  Review
-                </h2>
+                <Toggle
+                  checked={mandatoryRequirements}
+                  onChange={setMandatoryRequirements}
+                  title="Enforce mandatory requirements"
+                  description="Unsatisfied required requirements can cap the final decision."
+                />
               </div>
             </div>
+          </Card>
+        </div>
 
-            <div className="space-y-3 text-sm">
+        <div className="lg:sticky lg:top-6 lg:self-start">
+          <Card className="p-6">
+            <p className="text-xs font-mono uppercase tracking-widest text-ink-muted">
+              Screening summary
+            </p>
+
+            <h2 className="mt-1 font-display text-xl font-semibold text-ink">
+              Ready to screen?
+            </h2>
+
+            <div className="mt-6 space-y-4">
               <SummaryRow
                 label="Job description"
                 value={jdReady ? "Ready" : "Missing"}
@@ -474,39 +734,62 @@ export function ScreenCandidatesPage() {
               />
 
               <SummaryRow
-                label="Candidates"
-                value={`${resumes.length} selected`}
+                label="Resumes"
+                value={
+                  resumes.length > 0
+                    ? `${resumes.length} selected`
+                    : "None selected"
+                }
                 ready={resumes.length > 0}
-              />
-
-              <SummaryRow
-                label="Minimum experience"
-                value={minExperience ? `${minExperience}+ years` : "Not specified"}
-              />
-
-              <SummaryRow
-                label="Mandatory requirements"
-                value={mandatoryRequirements ? "Enabled" : "Disabled"}
               />
 
               <SummaryRow
                 label="Preferred skills"
                 value={includePreferred ? "Included" : "Excluded"}
               />
+
+              <SummaryRow
+                label="Mandatory rules"
+                value={
+                  mandatoryRequirements ? "Enforced" : "Not enforced"
+                }
+              />
+
+              {minExperience && (
+                <SummaryRow
+                  label="Experience override"
+                  value={`${minExperience} years`}
+                />
+              )}
             </div>
 
             <Button
               className="mt-6 w-full justify-center"
-              disabled={!canStart}
+              disabled={!canStart || isSubmitting}
               onClick={handleStart}
             >
-              <Play size={16} />
-              Start screening
+              {isSubmitting ? (
+                <>
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <Play size={16} />
+                  Start screening
+                </>
+              )}
             </Button>
 
             {!canStart && (
-              <p className="mt-3 text-center text-xs text-ink-muted">
+              <p className="mt-3 text-center text-xs leading-5 text-ink-muted">
                 Add a job description and at least one resume to continue.
+              </p>
+            )}
+
+            {isSubmitting && (
+              <p className="mt-3 text-center text-xs leading-5 text-ink-muted">
+                Extracting resumes, matching requirements, calculating scores,
+                and ranking candidates...
               </p>
             )}
           </Card>
@@ -538,6 +821,7 @@ function Toggle({
 
       <span>
         <span className="block text-sm font-medium text-ink">{title}</span>
+
         <span className="mt-1 block text-xs leading-5 text-ink-muted">
           {description}
         </span>
